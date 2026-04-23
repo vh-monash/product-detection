@@ -256,7 +256,7 @@ button:disabled {
     to { transform: rotate(360deg); }
 }
 
-/* --- Preview --- */
+/* --- Preview & slideshow --- */
 
 .preview-section {
     display: none;
@@ -273,8 +273,14 @@ button:disabled {
     margin: 28px 0 24px;
 }
 
-.section-label {
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 14px;
+}
+
+.section-label {
     font-size: 13px;
     font-weight: 600;
     color: #000000;
@@ -282,9 +288,52 @@ button:disabled {
     letter-spacing: 0.4px;
 }
 
+.slide-counter {
+    font-size: 13px;
+    color: #505050;
+    font-weight: 500;
+}
+
+.slideshow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slide-arrow {
+    /* Override the base button flex:1 */
+    flex: 0 0 36px;
+    height: 36px;
+    padding: 0;
+    background: #F6F6F6;
+    border: 1.5px solid #D0D0D0;
+    border-radius: 5px;
+    font-size: 26px;
+    line-height: 1;
+    color: #3C3C3C;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.slide-arrow:hover:not(:disabled) {
+    background: #006DAE;
+    border-color: #006DAE;
+    color: #FFFFFF;
+}
+
+.slide-arrow:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+}
+
 .preview-image {
+    /* flex:1 + min-width:0 lets the image fill available space within the slideshow row */
+    flex: 1;
+    min-width: 0;
     display: block;
-    width: 100%;
     border-radius: 5px;
     border: 1.5px solid #E0E0E0;
     background: #F6F6F6;
@@ -293,10 +342,13 @@ button:disabled {
 .preview-actions {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
     margin-top: 14px;
 }
 
 .btn-download {
+    flex: 0 0 auto;
     display: inline-block;
     background: #006DAE;
     color: #FFFFFF;
@@ -310,6 +362,25 @@ button:disabled {
 
 .btn-download:hover {
     background: #005a8e;
+}
+
+.btn-download-all {
+    /* Override base button flex:1 */
+    flex: 0 0 auto;
+    background: #FFFFFF;
+    color: #006DAE;
+    padding: 10px 22px;
+    border: 1.5px solid #006DAE;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-download-all:hover:not(:disabled) {
+    background: #006DAE;
+    color: #FFFFFF;
 }
 
 /* --- Responsive (mobile) --- */
@@ -335,5 +406,15 @@ button:disabled {
 
     .btn-secondary {
         flex: 1;
+    }
+
+    .preview-actions {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .btn-download,
+    .btn-download-all {
+        text-align: center;
     }
 }

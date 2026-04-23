@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Mask Processor</title>
     <link href="./styles.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -21,9 +22,9 @@
 
             <form id="uploadForm">
                 <div class="form-section">
-                    <label for="fileInput">Select File</label>
-                    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" required>
-                    <div class="help-text">Supported formats: JPG, PNG, PDF &mdash; Max 50 MB</div>
+                    <label for="fileInput">Select Files</label>
+                    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" multiple required>
+                    <div class="help-text">Supported formats: JPG, PNG, PDF &mdash; Max 50 MB per file</div>
                     <div id="fileInfo" class="file-info"></div>
                 </div>
 
@@ -33,7 +34,7 @@
                 </div>
             </form>
 
-            <!-- Shown while the request is in flight -->
+            <!-- Shown while requests are in flight -->
             <div id="progressSection" class="progress-section">
                 <div class="progress-bar">
                     <div id="progressFill" class="progress-fill"></div>
@@ -45,12 +46,24 @@
                 <div id="statusText" class="status-text"></div>
             </div>
 
-            <!-- Shown once the processed image is ready -->
+            <!-- Shown once processing is complete -->
             <div id="previewSection" class="preview-section">
                 <div class="divider"></div>
-                <p class="section-label">Result</p>
-                <img id="previewImage" class="preview-image" src="" alt="Processed result">
+                <div class="preview-header">
+                    <p class="section-label">Result</p>
+                    <span id="slideCounter" class="slide-counter"></span>
+                </div>
+
+                <!-- Slide arrows are hidden for single results -->
+                <div class="slideshow">
+                    <button id="prevBtn" class="slide-arrow" aria-label="Previous">&#8249;</button>
+                    <img id="previewImage" class="preview-image" src="" alt="Processed result">
+                    <button id="nextBtn" class="slide-arrow" aria-label="Next">&#8250;</button>
+                </div>
+
                 <div class="preview-actions">
+                    <!-- "Download All" is hidden for single results -->
+                    <button id="downloadAllBtn" class="btn-download-all">Download All</button>
                     <a id="downloadBtn" class="btn-download" download="processed.png">Download</a>
                 </div>
             </div>
@@ -61,29 +74,34 @@
     <script>
         // --- DOM references ---
 
-        const form           = document.getElementById('uploadForm');
-        const fileInput      = document.getElementById('fileInput');
-        const uploadBtn      = document.getElementById('uploadBtn');
-        const clearBtn       = document.getElementById('clearBtn');
-        const alertEl        = document.getElementById('alert');
+        const form            = document.getElementById('uploadForm');
+        const fileInput       = document.getElementById('fileInput');
+        const uploadBtn       = document.getElementById('uploadBtn');
+        const clearBtn        = document.getElementById('clearBtn');
+        const alertEl         = document.getElementById('alert');
         const progressSection = document.getElementById('progressSection');
-        const progressFill   = document.getElementById('progressFill');
-        const progressText   = document.getElementById('progressText');
-        const statusText     = document.getElementById('statusText');
-        const previewSection = document.getElementById('previewSection');
-        const previewImage   = document.getElementById('previewImage');
-        const downloadBtn    = document.getElementById('downloadBtn');
-        const fileInfo       = document.getElementById('fileInfo');
+        const progressFill    = document.getElementById('progressFill');
+        const progressText    = document.getElementById('progressText');
+        const statusText      = document.getElementById('statusText');
+        const previewSection  = document.getElementById('previewSection');
+        const previewImage    = document.getElementById('previewImage');
+        const downloadBtn     = document.getElementById('downloadBtn');
+        const downloadAllBtn  = document.getElementById('downloadAllBtn');
+        const slideCounter    = document.getElementById('slideCounter');
+        const prevBtn         = document.getElementById('prevBtn');
+        const nextBtn         = document.getElementById('nextBtn');
+        const fileInfo        = document.getElementById('fileInfo');
 
-        // Tracks the object URL for the current result so it can be revoked on next run
-        let currentObjectUrl = null;
+        // Each entry: { blob, filename, objectUrl }
+        let results      = [];
+        let currentIndex = 0;
 
         // --- UI helpers ---
 
         function showAlert(message, type = 'error') {
             alertEl.textContent = message;
             alertEl.className = `alert show alert-${type}`;
-            setTimeout(() => alertEl.classList.remove('show'), 5000);
+            setTimeout(() => alertEl.classList.remove('show'), 6000);
         }
 
         function updateProgress(percent, text) {
@@ -109,75 +127,167 @@
             return (match && match[1]) ? match[1].trim() : fallback;
         }
 
-        // Revokes the old object URL to free memory, then creates and displays the new one
-        function showResult(blob, filename) {
-            if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-            currentObjectUrl = URL.createObjectURL(blob);
+        // --- Slideshow ---
 
-            previewImage.src      = currentObjectUrl;
-            downloadBtn.href      = currentObjectUrl;
-            downloadBtn.download  = filename;
+        function goToSlide(index) {
+            currentIndex = index;
+            const { objectUrl, filename } = results[index];
+
+            previewImage.src     = objectUrl;
+            downloadBtn.href     = objectUrl;
+            downloadBtn.download = filename;
+
+            slideCounter.textContent = `${index + 1} / ${results.length}`;
+            prevBtn.disabled = index === 0;
+            nextBtn.disabled = index === results.length - 1;
+        }
+
+        // Creates object URLs for all results and renders the slideshow.
+        // Called once after all files have been processed.
+        function showResults() {
+            results.forEach(r => {
+                r.objectUrl = URL.createObjectURL(r.blob);
+            });
+
+            const multi = results.length > 1;
+            prevBtn.style.display        = multi ? '' : 'none';
+            nextBtn.style.display        = multi ? '' : 'none';
+            slideCounter.style.display   = multi ? '' : 'none';
+            downloadAllBtn.style.display = multi ? '' : 'none';
+
+            goToSlide(0);
             previewSection.classList.add('show');
         }
 
+        // Keyboard navigation (left/right arrow keys)
+        document.addEventListener('keydown', (e) => {
+            if (!previewSection.classList.contains('show') || results.length <= 1) return;
+            if (e.key === 'ArrowLeft'  && currentIndex > 0)               goToSlide(currentIndex - 1);
+            if (e.key === 'ArrowRight' && currentIndex < results.length - 1) goToSlide(currentIndex + 1);
+        });
+
+        // Touch/swipe navigation
+        let touchStartX = 0;
+        previewImage.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        }, { passive: true });
+        previewImage.addEventListener('touchend', (e) => {
+            const delta = touchStartX - e.changedTouches[0].clientX;
+            if (Math.abs(delta) < 50) return; // ignore small movements
+            if (delta > 0 && currentIndex < results.length - 1) goToSlide(currentIndex + 1);
+            if (delta < 0 && currentIndex > 0)                  goToSlide(currentIndex - 1);
+        }, { passive: true });
+
         // --- Event handlers ---
+
         fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-                fileInfo.textContent = `${file.name} (${sizeMB} MB)`;
-                fileInfo.classList.add('show');
+            const files = e.target.files;
+            if (files.length === 0) return;
+
+            if (files.length === 1) {
+                const sizeMB = (files[0].size / 1024 / 1024).toFixed(2);
+                fileInfo.textContent = `${files[0].name} (${sizeMB} MB)`;
+            } else {
+                const totalMB = (Array.from(files).reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(2);
+                fileInfo.textContent = `${files.length} files selected (${totalMB} MB total)`;
             }
+            fileInfo.classList.add('show');
         });
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const file = fileInput.files[0];
-            if (!file) {
-                showAlert('Please select a file');
+            const files = Array.from(fileInput.files);
+            if (files.length === 0) {
+                showAlert('Please select at least one file');
                 return;
             }
+
+            // Release object URLs from any previous run
+            results.forEach(r => r.objectUrl && URL.revokeObjectURL(r.objectUrl));
+            results = [];
 
             setFormLocked(true);
             previewSection.classList.remove('show');
             showProgress(true);
-            updateProgress(20, 'Uploading file...');
+
+            const errors = [];
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+
+                // Progress is split evenly across files, capped at 95% until all done
+                updateProgress(
+                    Math.round((i / files.length) * 95) + 5,
+                    files.length > 1 ? `Processing file ${i + 1} of ${files.length}...` : 'Processing...'
+                );
+                statusText.textContent = file.name;
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch('http://127.0.0.1:5000/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    // Error responses come back as JSON; success is a raw image blob
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Processing failed');
+                    }
+
+                    const blob     = await response.blob();
+                    const fallback = file.name.replace(/\.[^.]+$/, '_processed.png');
+                    const filename = getFilename(response.headers.get('Content-Disposition'), fallback);
+                    results.push({ blob, filename, objectUrl: null });
+
+                } catch (err) {
+                    errors.push(`${file.name}: ${err.message}`);
+                }
+            }
+
+            updateProgress(100, 'Done!');
+            showProgress(false);
+            statusText.textContent = '';
+            setFormLocked(false);
+
+            if (errors.length > 0) {
+                const allFailed = errors.length === files.length;
+                const msg = allFailed
+                    ? `Processing failed: ${errors[0]}`
+                    : `${errors.length} file(s) failed — ${errors.join(' | ')}`;
+                showAlert(msg, allFailed ? 'error' : 'info');
+            }
+
+            if (results.length > 0) showResults();
+        });
+
+        prevBtn.addEventListener('click', () => {
+            if (currentIndex > 0) goToSlide(currentIndex - 1);
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (currentIndex < results.length - 1) goToSlide(currentIndex + 1);
+        });
+
+        downloadAllBtn.addEventListener('click', async () => {
+            downloadAllBtn.disabled    = true;
+            downloadAllBtn.textContent = 'Zipping...';
 
             try {
-                const formData = new FormData();
-                formData.append('file', file);
+                const zip = new JSZip();
+                results.forEach(r => zip.file(r.filename, r.blob));
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-                updateProgress(40, 'Processing with API...');
-                statusText.textContent = 'Sending to detection API...';
-
-                const response = await fetch('http://127.0.0.1:5000/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                // Error responses come back as JSON; success is a raw image blob
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || 'Processing failed');
-                }
-
-                updateProgress(90, 'Finalizing...');
-                const blob = await response.blob();
-                const filename = getFilename(response.headers.get('Content-Disposition'));
-
-                updateProgress(100, 'Done!');
-                showProgress(false);
-                statusText.textContent = '';
-
-                showResult(blob, filename);
-
-            } catch (error) {
-                console.error(error);
-                showProgress(false);
-                showAlert(`Error: ${error.message}`);
+                // Trigger download then immediately free the temporary URL
+                const url = URL.createObjectURL(zipBlob);
+                Object.assign(document.createElement('a'), { href: url, download: 'processed_images.zip' }).click();
+                URL.revokeObjectURL(url);
             } finally {
-                setFormLocked(false);
+                downloadAllBtn.disabled    = false;
+                downloadAllBtn.textContent = 'Download All';
             }
         });
 
@@ -186,11 +296,10 @@
             fileInfo.classList.remove('show');
             alertEl.classList.remove('show');
             previewSection.classList.remove('show');
-            if (currentObjectUrl) {
-                URL.revokeObjectURL(currentObjectUrl);
-                currentObjectUrl = null;
-                previewImage.src = '';
-            }
+
+            results.forEach(r => r.objectUrl && URL.revokeObjectURL(r.objectUrl));
+            results = [];
+            previewImage.src = '';
         });
     </script>
 </body>
