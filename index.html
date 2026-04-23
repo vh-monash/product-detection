@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Mask Processor</title>
+    <link href="./styles.css" rel="stylesheet" />
+</head>
+<body>
+    <div class="container">
+
+        <div class="header">
+            <h1>Image Mask Processor</h1>
+            <p class="subtitle">Upload images or PDFs to extract segmentation masks</p>
+        </div>
+
+        <div class="body">
+
+            <!-- Dismisses automatically after 5 seconds -->
+            <div id="alert" class="alert"></div>
+
+            <form id="uploadForm">
+                <div class="form-section">
+                    <label for="fileInput">Select File</label>
+                    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" required>
+                    <div class="help-text">Supported formats: JPG, PNG, PDF &mdash; Max 50 MB</div>
+                    <div id="fileInfo" class="file-info"></div>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" id="uploadBtn" class="btn-primary">Upload &amp; Process</button>
+                    <button type="button" id="clearBtn" class="btn-secondary">Clear</button>
+                </div>
+            </form>
+
+            <!-- Shown while the request is in flight -->
+            <div id="progressSection" class="progress-section">
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div class="progress-text">
+                    <span class="spinner"></span>
+                    <span id="progressText">Processing...</span>
+                </div>
+                <div id="statusText" class="status-text"></div>
+            </div>
+
+            <!-- Shown once the processed image is ready -->
+            <div id="previewSection" class="preview-section">
+                <div class="divider"></div>
+                <p class="section-label">Result</p>
+                <img id="previewImage" class="preview-image" src="" alt="Processed result">
+                <div class="preview-actions">
+                    <a id="downloadBtn" class="btn-download" download="processed.png">Download</a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- DOM references ---
+
+        const form           = document.getElementById('uploadForm');
+        const fileInput      = document.getElementById('fileInput');
+        const uploadBtn      = document.getElementById('uploadBtn');
+        const clearBtn       = document.getElementById('clearBtn');
+        const alertEl        = document.getElementById('alert');
+        const progressSection = document.getElementById('progressSection');
+        const progressFill   = document.getElementById('progressFill');
+        const progressText   = document.getElementById('progressText');
+        const statusText     = document.getElementById('statusText');
+        const previewSection = document.getElementById('previewSection');
+        const previewImage   = document.getElementById('previewImage');
+        const downloadBtn    = document.getElementById('downloadBtn');
+        const fileInfo       = document.getElementById('fileInfo');
+
+        // Tracks the object URL for the current result so it can be revoked on next run
+        let currentObjectUrl = null;
+
+        // --- UI helpers ---
+
+        function showAlert(message, type = 'error') {
+            alertEl.textContent = message;
+            alertEl.className = `alert show alert-${type}`;
+            setTimeout(() => alertEl.classList.remove('show'), 5000);
+        }
+
+        function updateProgress(percent, text) {
+            progressFill.style.width = percent + '%';
+            progressText.textContent = text;
+        }
+
+        function showProgress(visible) {
+            progressSection.classList.toggle('show', visible);
+        }
+
+        function setFormLocked(locked) {
+            uploadBtn.disabled = locked;
+            clearBtn.disabled  = locked;
+            fileInput.disabled = locked;
+        }
+
+        // Extracts the filename from a Content-Disposition header, e.g.:
+        //   attachment; filename="result.png"  →  "result.png"
+        function getFilename(disposition, fallback = 'processed.png') {
+            if (!disposition) return fallback;
+            const match = disposition.match(/filename[^;=\n]*=(?:['"]?)([^'"\n;]*)/);
+            return (match && match[1]) ? match[1].trim() : fallback;
+        }
+
+        // Revokes the old object URL to free memory, then creates and displays the new one
+        function showResult(blob, filename) {
+            if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+            currentObjectUrl = URL.createObjectURL(blob);
+
+            previewImage.src      = currentObjectUrl;
+            downloadBtn.href      = currentObjectUrl;
+            downloadBtn.download  = filename;
+            previewSection.classList.add('show');
+        }
+
+        // --- Event handlers ---
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+                fileInfo.textContent = `${file.name} (${sizeMB} MB)`;
+                fileInfo.classList.add('show');
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const file = fileInput.files[0];
+            if (!file) {
+                showAlert('Please select a file');
+                return;
+            }
+
+            setFormLocked(true);
+            previewSection.classList.remove('show');
+            showProgress(true);
+            updateProgress(20, 'Uploading file...');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                updateProgress(40, 'Processing with API...');
+                statusText.textContent = 'Sending to detection API...';
+
+                const response = await fetch('http://127.0.0.1:5000/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // Error responses come back as JSON; success is a raw image blob
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Processing failed');
+                }
+
+                updateProgress(90, 'Finalizing...');
+                const blob = await response.blob();
+                const filename = getFilename(response.headers.get('Content-Disposition'));
+
+                updateProgress(100, 'Done!');
+                showProgress(false);
+                statusText.textContent = '';
+
+                showResult(blob, filename);
+
+            } catch (error) {
+                console.error(error);
+                showProgress(false);
+                showAlert(`Error: ${error.message}`);
+            } finally {
+                setFormLocked(false);
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            fileInput.value = '';
+            fileInfo.classList.remove('show');
+            alertEl.classList.remove('show');
+            previewSection.classList.remove('show');
+            if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = null;
+                previewImage.src = '';
+            }
+        });
+    </script>
+</body>
+</html>

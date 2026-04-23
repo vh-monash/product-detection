@@ -7,10 +7,6 @@ import fitz
 from PIL import Image, ImageDraw
 import cv2
 
-directory = ""
-api_key = os.environ("API_KEY")
-url = os.environ("URL")
-args = {"conf": 0.8, "iou": 0.7, "imgsz": 640}
 # Dilation kernel size (in pixels) - increase this to expand the mask more
 DILATION_KERNEL_SIZE = 10  # 50x50 kernel
 
@@ -61,7 +57,7 @@ def add_white_background_to_rectangle(image_with_alpha, padding_percentage=10):
     return result_image
 
 
-def extract_and_crop_by_mask(response_json, filename, page_num=None, image_path=None):
+def extract_and_crop_by_mask(original_image, images):
     """
     Extract segmentation masks from API response and crop image based on mask.
     Only the masked pixels are kept. Mask is dilated to include edges.
@@ -74,12 +70,6 @@ def extract_and_crop_by_mask(response_json, filename, page_num=None, image_path=
         image_path: Path to the original image for reference
     """
     try:
-        images = response_json.get('images', [])
-        
-        if not images:
-            print(f"  No images in response")
-            return
-        
         for _, img_data in enumerate(images):
             image_shape = img_data.get('shape', [])
             results = img_data.get('results', [])
@@ -90,9 +80,6 @@ def extract_and_crop_by_mask(response_json, filename, page_num=None, image_path=
             
             height, width = image_shape[0], image_shape[1]
             print(f"  Image shape: {width}x{height}")
-            
-            # Open the original image
-            original_image = Image.open(image_path).convert('RGB')
             
             # Process each detected object
             for obj_idx, result in enumerate(results):
@@ -141,14 +128,7 @@ def extract_and_crop_by_mask(response_json, filename, page_num=None, image_path=
                 # Add white background to make rectangular
                 final_image = add_white_background_to_rectangle(cropped_rgba, padding_percentage=10)
                 
-                # Save final image with white background``
-                if page_num is not None:
-                    crop_filename = f"{Path(filename).stem}_page_{page_num}_masked_{obj_idx}.png"
-                else:
-                    crop_filename = f"{Path(filename).stem}_masked_{obj_idx}.png"
-                
-                final_image.save(crop_filename)
-                print(f"      Masked crop with white background saved: {crop_filename}")
+                return final_image
     
     except Exception as e:
         print(f"  Error extracting masks: {e}")

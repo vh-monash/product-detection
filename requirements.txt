@@ -3,4 +3,6 @@ numpy
 pillow
 opencv-python
 pymupdf
-matplotlib
+werkzeug
+flask
+flask-cors
