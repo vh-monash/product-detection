@@ -5,7 +5,7 @@ from io import BytesIO
 
 import fitz
 import requests
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from PIL import Image
 
@@ -13,6 +13,7 @@ from detection.extract import extract_and_crop_by_mask
 
 # --- Config ---
 
+BASE_DIR           = os.path.dirname(os.path.abspath(__file__))
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'pdf'}
 MAX_FILE_SIZE      = 50 * 1024 * 1024  # 50 MB
 API_TIMEOUT        = 60                 # seconds before giving up on the detection API
@@ -68,6 +69,14 @@ def server_error(e):
 
 
 # --- Routes ---
+
+@app.route('/')
+def frontend():
+    return send_from_directory(BASE_DIR, 'index.html')
+
+@app.route('/styles.css')
+def styles():
+    return send_from_directory(BASE_DIR, 'styles.css')
 
 @app.route('/health')
 def health():
