@@ -6,6 +6,18 @@
     box-sizing: border-box;
 }
 
+/* Remove browser default focus ring globally; re-added below with :focus-visible */
+*:focus {
+    outline: none;
+}
+
+/* Keyboard focus ring — visible only for keyboard navigation, not mouse clicks.
+   Browsers that don't support :focus-visible fall back to no ring (acceptable). */
+*:focus-visible {
+    outline: 2px solid #006DAE;
+    outline-offset: 2px;
+}
+
 /* --- Layout --- */
 
 body {
@@ -79,10 +91,15 @@ input[type="file"] {
     transition: border-color 0.2s;
 }
 
-input[type="file"]:hover,
-input[type="file"]:focus {
+input[type="file"]:hover {
+    border-color: #006DAE;
+}
+
+/* Custom keyboard focus for file input — border highlight instead of the global outline */
+input[type="file"]:focus-visible {
     outline: none;
     border-color: #006DAE;
+    box-shadow: 0 0 0 3px rgba(0, 109, 174, 0.18);
 }
 
 input[type="file"]::file-selector-button {
@@ -137,6 +154,7 @@ button {
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
+    user-select: none;
     transition: all 0.2s;
 }
 
@@ -239,6 +257,8 @@ button:disabled {
     font-size: 12px;
     color: #505050;
     text-align: center;
+    /* Prevent layout shift as the filename text changes */
+    min-height: 1.4em;
 }
 
 .spinner {
@@ -301,7 +321,7 @@ button:disabled {
 }
 
 .slide-arrow {
-    /* Override the base button flex:1 */
+    /* Override base button flex:1 */
     flex: 0 0 36px;
     height: 36px;
     padding: 0;
@@ -357,6 +377,7 @@ button:disabled {
     font-size: 14px;
     font-weight: 600;
     text-decoration: none;
+    user-select: none;
     transition: background 0.2s;
 }
 
