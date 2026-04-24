@@ -6,3 +6,4 @@ pymupdf
 werkzeug
 flask
 flask-cors
+waitress
